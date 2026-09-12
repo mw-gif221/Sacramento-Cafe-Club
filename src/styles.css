@@ -121,8 +121,8 @@ main{max-width:1180px;margin:auto;padding:0 20px}
 .cafe-card:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(74,48,45,.10)}
 .cafe-card:focus-visible{outline:2px solid var(--pink-dark);outline-offset:3px}
 .card-link{display:inline-flex;align-items:center;gap:3px;color:var(--pink-dark);font-size:12px;font-weight:700;margin-top:4px}
-.cafe-detail-modal{padding:0;overflow:hidden;max-width:560px}
-.detail-image{height:250px;background:linear-gradient(135deg,#f8dcd8,#e9eee2);background-size:cover;background-position:center;position:relative}
+.cafe-detail-modal{padding:0;overflow-y:auto;overflow-x:hidden;max-width:560px;max-height:92vh}
+.detail-image{height:250px;flex:0 0 auto;background:linear-gradient(135deg,#f8dcd8,#e9eee2);background-size:cover;background-position:center;position:relative}
 .detail-image.has-image{background-color:#eee}
 .detail-close{position:absolute;right:14px;top:14px;width:38px;height:38px;border:0;border-radius:50%;background:rgba(255,253,251,.94);color:var(--espresso);display:grid;place-items:center;box-shadow:0 5px 18px rgba(74,48,45,.12);cursor:pointer}
 .detail-body{padding:24px}
