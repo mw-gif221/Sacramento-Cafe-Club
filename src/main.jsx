@@ -26,6 +26,7 @@ function App() {
   const [activeFilter, setActiveFilter] = useState("All");
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [selectedCafe, setSelectedCafe] = useState(null);
   const [cafes, setCafes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -243,30 +244,30 @@ function App() {
           </section>
         ) : (
           <>
-            <section className="section">
+            <section className="section" id="favorite-section">
               <div className="section-heading">
                 <div><span className="eyebrow">Your collection</span><h2>Favorite cafés <span>♡</span></h2></div>
-                <button className="text-button">See all <ChevronRight size={15}/></button>
+                <button className="text-button" onClick={() => document.getElementById("favorite-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}>See all <ChevronRight size={15}/></button>
               </div>
               {loading ? (
                 <div className="empty-state">Loading our café club… ☕</div>
               ) : filtered.filter(c => c.favorite).length ? (
                 <div className="cafe-grid">
-                  {filtered.filter(c => c.favorite).map(cafe => <CafeCard key={cafe.id} cafe={cafe}/>)}
+                  {filtered.filter(c => c.favorite).map(cafe => <CafeCard key={cafe.id} cafe={cafe} onOpen={setSelectedCafe}/>)}
                 </div>
               ) : (
                 <div className="empty-state">No favorites yet — add a café and make it yours ♡</div>
               )}
             </section>
 
-            <section className="section">
+            <section className="section" id="want-to-try-section">
               <div className="section-heading">
                 <div><span className="eyebrow">Keep exploring</span><h2>Want to try</h2></div>
-                <button className="text-button">See all <ChevronRight size={15}/></button>
+                <button className="text-button" onClick={() => document.getElementById("want-to-try-section")?.scrollIntoView({ behavior: "smooth", block: "start" })}>See all <ChevronRight size={15}/></button>
               </div>
               {loading ? null : filtered.filter(c => !c.tried).length ? (
                 <div className="cafe-grid">
-                  {filtered.filter(c => !c.tried).map(cafe => <CafeCard key={cafe.id} cafe={cafe}/>)}
+                  {filtered.filter(c => !c.tried).map(cafe => <CafeCard key={cafe.id} cafe={cafe} onOpen={setSelectedCafe}/>)}
                 </div>
               ) : cafes.length ? (
                 <div className="empty-state">You've tried every café currently on the list ✨</div>
@@ -275,7 +276,7 @@ function App() {
               )}
             </section>
 
-            <section className="section">
+            <section className="section" id="all-cafes-section">
               <div className="section-heading">
                 <div><span className="eyebrow">The café club</span><h2>All cafés ☕</h2></div>
                 <span className="cafe-count">{filtered.length} {filtered.length === 1 ? "café" : "cafés"}</span>
@@ -284,7 +285,7 @@ function App() {
                 <div className="empty-state">Loading our café club… ☕</div>
               ) : filtered.length ? (
                 <div className="cafe-grid">
-                  {filtered.map(cafe => <CafeCard key={cafe.id} cafe={cafe}/>)}
+                  {filtered.map(cafe => <CafeCard key={cafe.id} cafe={cafe} onOpen={setSelectedCafe}/>)}
                 </div>
               ) : (
                 <div className="empty-state">No cafés match your search or filter yet. Try another one ♡</div>
@@ -312,17 +313,32 @@ function App() {
         <NavButton icon={UserRound} label="Crew" active={false} onClick={() => {}} />
       </nav>
 
-      {showAdd && <AddCafeModal onClose={() => setShowAdd(false)} onSubmit={addCafe}/>} 
+      {showAdd && <AddCafeModal onClose={() => setShowAdd(false)} onSubmit={addCafe}/>}
+      {selectedCafe && <CafeDetailModal cafe={selectedCafe} onClose={() => setSelectedCafe(null)} />}
+
     </div>
   );
 }
 
-function CafeCard({ cafe }) {
+function CafeCard({ cafe, onOpen }) {
   return (
-    <article className="cafe-card">
+    <article
+      className="cafe-card"
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen?.(cafe)}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen?.(cafe); } }}
+      aria-label={`View details for ${cafe.name}`}
+    >
       <div className={`cafe-image ${cafe.image ? "has-image" : ""}`} style={cafe.image ? {backgroundImage: `url(${cafe.image})`} : {}}>
         {!cafe.image && <div className="placeholder-art"><Coffee size={34}/><span>Your photo here</span></div>}
-        <button className={`heart ${cafe.favorite ? "liked" : ""}`}><Heart size={18} fill={cafe.favorite ? "currentColor" : "none"}/></button>
+        <button
+          type="button"
+          className={`heart ${cafe.favorite ? "liked" : ""}`}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={cafe.favorite ? "Favorite café" : "Add to favorites"}
+        >
+          <Heart size={18} fill={cafe.favorite ? "currentColor" : "none"}/></button>
       </div>
       <div className="cafe-info">
         <div className="cafe-title-row">
@@ -332,8 +348,37 @@ function CafeCard({ cafe }) {
         <div className="location"><MapPin size={13}/>{cafe.neighborhood}</div>
         <div className="tags">{cafe.tags.map(t => <span key={t}>{t}</span>)}</div>
         <p>{cafe.note}</p>
+        <span className="card-link">View café <ChevronRight size={13}/></span>
       </div>
     </article>
+  );
+}
+
+function CafeDetailModal({ cafe, onClose }) {
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <div className="modal cafe-detail-modal" onMouseDown={e => e.stopPropagation()}>
+        <div className={`detail-image ${cafe.image ? "has-image" : ""}`} style={cafe.image ? {backgroundImage: `url(${cafe.image})`} : {}}>
+          {!cafe.image && <div className="placeholder-art"><Coffee size={44}/><span>Add a photo to this café</span></div>}
+          <button type="button" className="detail-close" onClick={onClose} aria-label="Close"><X size={20}/></button>
+        </div>
+        <div className="detail-body">
+          <div className="eyebrow">Café Club find</div>
+          <div className="detail-title-row">
+            <div><h2>{cafe.name}</h2><div className="location"><MapPin size={14}/>{cafe.neighborhood}{cafe.address ? ` · ${cafe.address}` : ""}</div></div>
+            {cafe.rating && <span className="detail-rating"><Star size={15} fill="currentColor"/>{cafe.rating}</span>}
+          </div>
+          {cafe.tags.length > 0 && <div className="tags detail-tags">{cafe.tags.map(t => <span key={t}>{t}</span>)}</div>}
+          {cafe.note && <p className="detail-note">{cafe.note}</p>}
+          <div className="detail-meta">
+            <span>{cafe.reviews} {cafe.reviews === 1 ? "review" : "reviews"}</span>
+            {cafe.tried && <span>✓ Been here</span>}
+            {cafe.favorite && <span>♡ Favorite</span>}
+          </div>
+          <button type="button" className="submit-button" onClick={onClose}>Done <Heart size={17}/></button>
+        </div>
+      </div>
+    </div>
   );
 }
 
