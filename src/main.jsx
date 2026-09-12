@@ -200,6 +200,66 @@ function App() {
     setActiveTab("home");
   }
 
+  async function updateCafe(cafeId, form) {
+    setError("");
+
+    const { error: cafeError } = await supabase
+      .from("cafes")
+      .update({
+        name: form.name.trim(),
+        address: form.address.trim() || null,
+        neighborhood: form.neighborhood.trim() || "Sacramento",
+        description: form.description.trim() || null
+      })
+      .eq("id", cafeId);
+
+    if (cafeError) {
+      console.error(cafeError);
+      setError(cafeError.message || "We couldn't update that café. Please try again.");
+      return false;
+    }
+
+    // Replace the café's tag associations with the edited selection.
+    const { error: tagDeleteError } = await supabase
+      .from("cafe_tags")
+      .delete()
+      .eq("cafe_id", cafeId);
+    if (tagDeleteError) {
+      console.error(tagDeleteError);
+      setError(tagDeleteError.message || "The café was updated, but its tags could not be changed.");
+      await loadCafes();
+      return false;
+    }
+
+    const selectedTags = form.tags.length ? form.tags : ["Coffee"];
+    const { data: tagRows, error: tagError } = await supabase
+      .from("tags")
+      .select("id, name")
+      .in("name", selectedTags);
+    if (tagError) {
+      console.error(tagError);
+      setError(tagError.message || "The café was updated, but its tags could not be loaded.");
+      await loadCafes();
+      return false;
+    }
+
+    if (tagRows?.length) {
+      const { error: cafeTagsError } = await supabase.from("cafe_tags").insert(
+        tagRows.map((tag) => ({ cafe_id: cafeId, tag_id: tag.id }))
+      );
+      if (cafeTagsError) {
+        console.error(cafeTagsError);
+        setError(cafeTagsError.message || "The café was updated, but its tags could not be saved.");
+        await loadCafes();
+        return false;
+      }
+    }
+
+    await loadCafes();
+    setSelectedCafe(null);
+    return true;
+  }
+
   function scrollToSection(id) {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -350,7 +410,7 @@ function App() {
       </nav>
 
       {showAdd && <AddCafeModal onClose={() => setShowAdd(false)} onSubmit={addCafe}/>}
-      {selectedCafe && <CafeDetailModal cafe={selectedCafe} onClose={() => setSelectedCafe(null)} />}
+      {selectedCafe && <CafeDetailModal cafe={selectedCafe} onClose={() => setSelectedCafe(null)} onUpdate={updateCafe} />}
 
     </div>
   );
@@ -384,9 +444,11 @@ function CafeCard({ cafe, onOpen }) {
   );
 }
 
-function CafeDetailModal({ cafe, onClose }) {
+function CafeDetailModal({ cafe, onClose, onUpdate }) {
   const reviews = cafe.reviews || [];
   const photos = cafe.photos || [];
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const [showEdit, setShowEdit] = useState(false);
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -410,6 +472,9 @@ function CafeDetailModal({ cafe, onClose }) {
             {cafe.favorite && <span>♡ Favorite</span>}
             <span>{reviews.length} {reviews.length === 1 ? "review" : "reviews"}</span>
           </div>
+          <button className="edit-cafe-button" onClick={() => setShowEdit(true)}>
+            Edit café <span>✎</span>
+          </button>
           {cafe.note && <p className="detail-note">{cafe.note}</p>}
           {(cafe.website || cafe.instagram) && (
             <div className="detail-links">
@@ -421,7 +486,12 @@ function CafeDetailModal({ cafe, onClose }) {
             <div className="detail-section">
               <div className="detail-section-heading"><h3>Café photos</h3><span>{photos.length}</span></div>
               <div className="photo-strip">
-                {photos.map(photo => <figure key={photo.id}><img src={photo.photo_url} alt={photo.caption || `${cafe.name} café`} />{photo.caption && <figcaption>{photo.caption}</figcaption>}</figure>)}
+                {photos.map(photo => (
+                  <figure key={photo.id} className="photo-thumb" onClick={() => setSelectedPhoto(photo)} tabIndex={0} role="button" onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedPhoto(photo); } }} aria-label={`Expand photo of ${cafe.name}`}>
+                    <img src={photo.photo_url} alt={photo.caption || `${cafe.name} café`} />
+                    {photo.caption && <figcaption>{photo.caption}</figcaption>}
+                  </figure>
+                ))}
               </div>
             </div>
           )}
@@ -441,6 +511,80 @@ function CafeDetailModal({ cafe, onClose }) {
           </div>
           <button className="detail-close-button" onClick={onClose}>Back to cafés</button>
         </div>
+        {selectedPhoto && (
+          <div className="photo-lightbox" onMouseDown={() => setSelectedPhoto(null)}>
+            <div className="photo-lightbox-inner" onMouseDown={e => e.stopPropagation()}>
+              <button className="photo-lightbox-close" onClick={() => setSelectedPhoto(null)} aria-label="Close photo"><X size={22}/></button>
+              <img src={selectedPhoto.photo_url} alt={selectedPhoto.caption || `${cafe.name} café`} />
+              {selectedPhoto.caption && <p>{selectedPhoto.caption}</p>}
+            </div>
+          </div>
+        )}
+        {showEdit && (
+          <EditCafeModal
+            cafe={cafe}
+            onClose={() => setShowEdit(false)}
+            onSave={async (form) => {
+              const ok = await onUpdate(cafe.id, form);
+              if (ok) setShowEdit(false);
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EditCafeModal({ cafe, onClose, onSave }) {
+  const [form, setForm] = useState({
+    name: cafe.name || "",
+    address: cafe.address || "",
+    neighborhood: cafe.neighborhood || "",
+    description: cafe.description || cafe.note || "",
+    tags: cafe.tags?.length ? cafe.tags : ["Coffee"]
+  });
+  const [saving, setSaving] = useState(false);
+
+  function update(key, value) { setForm(f => ({ ...f, [key]: value })); }
+  function toggleTag(tag) {
+    setForm(f => ({
+      ...f,
+      tags: f.tags.includes(tag) ? f.tags.filter(t => t !== tag) : [...f.tags, tag]
+    }));
+  }
+  async function submit(e) {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    setSaving(true);
+    await onSave(form);
+    setSaving(false);
+  }
+
+  return (
+    <div className="modal-backdrop edit-modal-backdrop" onMouseDown={onClose}>
+      <div className="modal edit-cafe-modal" onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <div><span className="eyebrow">Café club</span><h2>Edit café ✎</h2></div>
+          <button onClick={onClose} aria-label="Close edit café"><X/></button>
+        </div>
+        <form onSubmit={submit}>
+          <label>Café name <input required value={form.name} onChange={e => update("name", e.target.value)} /></label>
+          <label>Address <input value={form.address} onChange={e => update("address", e.target.value)} placeholder="e.g. 1100 R St, Sacramento" /></label>
+          <label>Neighborhood <input value={form.neighborhood} onChange={e => update("neighborhood", e.target.value)} placeholder="e.g. Midtown" /></label>
+          <label>Café description <textarea value={form.description} onChange={e => update("description", e.target.value)} placeholder="A short note about this café" /></label>
+          <div className="field-label">Tags</div>
+          <div className="tag-picker">
+            {categories.map(({label, icon:Icon}) => (
+              <button type="button" key={label} className={form.tags.includes(label) ? "tag-on" : ""} onClick={() => toggleTag(label)}>
+                <Icon size={15}/>{label}
+              </button>
+            ))}
+          </div>
+          <button className="submit-button" type="submit" disabled={saving}>
+            {saving ? "Saving…" : "Save changes"} <Heart size={17}/>
+          </button>
+        </form>
+        <p className="modal-footnote">Café details are shared with everyone who has the link.</p>
       </div>
     </div>
   );
