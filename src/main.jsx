@@ -275,6 +275,22 @@ function App() {
               )}
             </section>
 
+            <section className="section">
+              <div className="section-heading">
+                <div><span className="eyebrow">The café club</span><h2>All cafés ☕</h2></div>
+                <span className="cafe-count">{filtered.length} {filtered.length === 1 ? "café" : "cafés"}</span>
+              </div>
+              {loading ? (
+                <div className="empty-state">Loading our café club… ☕</div>
+              ) : filtered.length ? (
+                <div className="cafe-grid">
+                  {filtered.map(cafe => <CafeCard key={cafe.id} cafe={cafe}/>)}
+                </div>
+              ) : (
+                <div className="empty-state">No cafés match your search or filter yet. Try another one ♡</div>
+              )}
+            </section>
+
             <section className="community-banner">
               <div className="community-icon">☕</div>
               <div>
