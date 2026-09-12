@@ -27,7 +27,6 @@ function App() {
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [selectedCafe, setSelectedCafe] = useState(null);
-  const [selectedCafe, setSelectedCafe] = useState(null);
   const [cafes, setCafes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -319,7 +318,6 @@ function App() {
       </nav>
 
       {showAdd && <AddCafeModal onClose={() => setShowAdd(false)} onSubmit={addCafe}/>}
-      {selectedCafe && <CafeDetailModal cafe={selectedCafe} onClose={() => setSelectedCafe(null)} />}
       {selectedCafe && <CafeDetailModal cafe={selectedCafe} onClose={() => setSelectedCafe(null)} />}
 
     </div>
