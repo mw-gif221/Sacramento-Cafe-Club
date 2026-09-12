@@ -128,7 +128,7 @@ function App() {
       return;
     }
 
-    if (form.review.trim() || form.rating) {
+    if (!form.wantToTry && (form.review.trim() || form.rating)) {
       const { error: reviewError } = await supabase.from("reviews").insert({
         cafe_id: cafe.id,
         contributor_name: contributorName,
@@ -598,7 +598,7 @@ function AddCafeModal({onClose, onSubmit}) {
   const savedContributor = localStorage.getItem("cafeClubContributor") || "";
   const [form, setForm] = useState({
     name:"", address:"", neighborhood:"", contributorName:savedContributor,
-    rating:"", review:"", tags:["Coffee"], favorite:false, tried:true, image:null
+    rating:"", review:"", tags:["Coffee"], favorite:false, tried:true, wantToTry:false, image:null
   });
   const [preview, setPreview] = useState("");
   const [saving, setSaving] = useState(false);
@@ -640,7 +640,8 @@ function AddCafeModal({onClose, onSubmit}) {
           {preview && <img className="preview" src={preview} alt="Selected café preview"/>}
           <div className="switch-row">
             <label className="check"><input type="checkbox" checked={form.favorite} onChange={e => update("favorite", e.target.checked)}/> Favorite</label>
-            <label className="check"><input type="checkbox" checked={form.tried} onChange={e => update("tried", e.target.checked)}/> I've been here</label>
+            <label className="check"><input type="checkbox" checked={form.tried} onChange={e => setForm(f => ({...f, tried: e.target.checked, wantToTry: e.target.checked ? false : f.wantToTry}))}/> I've been here</label>
+            <label className="check"><input type="checkbox" checked={form.wantToTry} onChange={e => setForm(f => ({...f, wantToTry: e.target.checked, tried: e.target.checked ? false : f.tried}))}/> Want to try</label>
           </div>
           <button className="submit-button" type="submit" disabled={saving}>{saving ? "Adding…" : "Add café"} <Heart size={17}/></button>
         </form>
