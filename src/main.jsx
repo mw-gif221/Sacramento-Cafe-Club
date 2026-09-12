@@ -160,8 +160,40 @@ function App() {
       if (favoriteError) console.error(favoriteError);
     }
 
-    // Photo uploads are intentionally left for the next step after Storage upload
-    // permissions are configured in Supabase.
+    // Upload the selected photo to the public Supabase Storage bucket.
+    if (form.image) {
+      const file = form.image;
+      const safeName = file.name.toLowerCase().replace(/[^a-z0-9.\-_]+/g, "-");
+      const filePath = `${cafe.id}/${Date.now()}-${safeName}`;
+
+      const { error: uploadError } = await supabase
+        .storage
+        .from("Cafe Photos")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type || "image/jpeg"
+        });
+
+      if (uploadError) {
+        console.error(uploadError);
+        setError("The café was added, but the photo could not be uploaded yet. Please check Storage permissions.");
+      } else {
+        const { data: publicData } = supabase
+          .storage
+          .from("Cafe Photos")
+          .getPublicUrl(filePath);
+
+        const { error: photoRowError } = await supabase.from("photos").insert({
+          cafe_id: cafe.id,
+          contributor_name: contributorName,
+          photo_url: publicData.publicUrl
+        });
+
+        if (photoRowError) console.error(photoRowError);
+      }
+    }
+
     localStorage.setItem("cafeClubContributor", contributorName);
     setShowAdd(false);
     await loadCafes();
