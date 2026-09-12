@@ -155,3 +155,22 @@ main{max-width:1180px;margin:auto;padding:0 20px}
 .detail-empty{font-size:12px;color:var(--muted);background:#fffaf7;border:1px dashed #d8bbb4;border-radius:15px;padding:14px}
 .detail-close-button{width:100%;border:0;background:var(--espresso);color:#fff;border-radius:14px;padding:13px;margin-top:24px;font-weight:700;cursor:pointer}
 @media(max-width:600px){.photo-strip figure,.photo-strip img{min-width:135px;width:135px}.photo-strip img{height:110px}}
+
+
+/* Expand café photos */
+.photo-thumb{cursor:zoom-in;border-radius:14px;outline:none;transition:transform .16s ease,box-shadow .16s ease}
+.photo-thumb:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(74,48,45,.12)}
+.photo-thumb:focus-visible{outline:2px solid var(--pink-dark);outline-offset:3px}
+.photo-lightbox{position:fixed;inset:0;z-index:100;background:rgba(40,25,23,.78);display:grid;place-items:center;padding:22px}
+.photo-lightbox-inner{position:relative;width:min(92vw,900px);max-height:92vh;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.photo-lightbox-inner img{display:block;max-width:100%;max-height:82vh;width:auto;height:auto;object-fit:contain;border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,.28);background:#fff}
+.photo-lightbox-inner p{margin:10px 0 0;color:#fffaf7;font-size:12px;text-align:center;max-width:700px}
+.photo-lightbox-close{position:absolute;right:-8px;top:-8px;z-index:2;width:42px;height:42px;border:0;border-radius:50%;background:rgba(255,253,251,.96);color:var(--espresso);display:grid;place-items:center;box-shadow:0 8px 24px rgba(0,0,0,.18);cursor:pointer}
+@media(max-width:600px){.photo-lightbox{padding:14px}.photo-lightbox-inner img{max-height:78vh;border-radius:14px}.photo-lightbox-close{right:-2px;top:-2px}}
+/* Edit café */
+.edit-cafe-button{border:1px solid var(--line);background:#fffaf7;color:var(--pink-dark);border-radius:999px;padding:8px 12px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:5px;cursor:pointer;margin-bottom:4px}
+.edit-cafe-button:hover{background:var(--pink-soft)}
+.edit-modal-backdrop{z-index:120}
+.edit-cafe-modal{max-height:88vh}
+@media(max-width:600px){.edit-cafe-modal{width:min(94vw,560px);padding:18px}}
+
