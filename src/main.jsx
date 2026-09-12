@@ -27,6 +27,7 @@ function App() {
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [selectedCafe, setSelectedCafe] = useState(null);
+  const [selectedCafe, setSelectedCafe] = useState(null);
   const [cafes, setCafes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -166,6 +167,10 @@ function App() {
     setShowAdd(false);
     await loadCafes();
     setActiveTab("home");
+  }
+
+  function scrollToSection(id) {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   return (
@@ -315,67 +320,96 @@ function App() {
 
       {showAdd && <AddCafeModal onClose={() => setShowAdd(false)} onSubmit={addCafe}/>}
       {selectedCafe && <CafeDetailModal cafe={selectedCafe} onClose={() => setSelectedCafe(null)} />}
+      {selectedCafe && <CafeDetailModal cafe={selectedCafe} onClose={() => setSelectedCafe(null)} />}
 
     </div>
   );
 }
 
 function CafeCard({ cafe, onOpen }) {
+  function handleOpen() { onOpen?.(cafe); }
+  function handleKeyDown(e) {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleOpen(); }
+  }
+
   return (
-    <article
-      className="cafe-card"
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpen?.(cafe)}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen?.(cafe); } }}
-      aria-label={`View details for ${cafe.name}`}
-    >
+    <article className="cafe-card" role="button" tabIndex={0} onClick={handleOpen} onKeyDown={handleKeyDown} aria-label={`View ${cafe.name}`}>
       <div className={`cafe-image ${cafe.image ? "has-image" : ""}`} style={cafe.image ? {backgroundImage: `url(${cafe.image})`} : {}}>
         {!cafe.image && <div className="placeholder-art"><Coffee size={34}/><span>Your photo here</span></div>}
-        <button
-          type="button"
-          className={`heart ${cafe.favorite ? "liked" : ""}`}
-          onClick={(e) => e.stopPropagation()}
-          aria-label={cafe.favorite ? "Favorite café" : "Add to favorites"}
-        >
-          <Heart size={18} fill={cafe.favorite ? "currentColor" : "none"}/></button>
+        <button className={`heart ${cafe.favorite ? "liked" : ""}`} onClick={(e) => e.stopPropagation()} aria-label="Favorite café">
+          <Heart size={18} fill={cafe.favorite ? "currentColor" : "none"}/>
+        </button>
       </div>
       <div className="cafe-info">
         <div className="cafe-title-row">
           <h3>{cafe.name}</h3>
-          {cafe.rating && <span className="rating"><Star size={14} fill="currentColor"/>{cafe.rating}</span>}
+          {cafe.rating != null && <span className="rating"><Star size={14} fill="currentColor"/>{cafe.rating}</span>}
         </div>
         <div className="location"><MapPin size={13}/>{cafe.neighborhood}</div>
         <div className="tags">{cafe.tags.map(t => <span key={t}>{t}</span>)}</div>
-        <p>{cafe.note}</p>
-        <span className="card-link">View café <ChevronRight size={13}/></span>
+        {cafe.note && <p>{cafe.note}</p>}
+        <span className="card-link">View café <ChevronRight size={14}/></span>
       </div>
     </article>
   );
 }
 
 function CafeDetailModal({ cafe, onClose }) {
+  const reviews = cafe.reviews || [];
+  const photos = cafe.photos || [];
+
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div className="modal cafe-detail-modal" onMouseDown={e => e.stopPropagation()}>
-        <div className={`detail-image ${cafe.image ? "has-image" : ""}`} style={cafe.image ? {backgroundImage: `url(${cafe.image})`} : {}}>
-          {!cafe.image && <div className="placeholder-art"><Coffee size={44}/><span>Add a photo to this café</span></div>}
-          <button type="button" className="detail-close" onClick={onClose} aria-label="Close"><X size={20}/></button>
+        <div className={`detail-image ${cafe.image ? "has-image" : ""}`} style={cafe.image ? { backgroundImage: `url(${cafe.image})` } : {}}>
+          {!cafe.image && <div className="placeholder-art"><Coffee size={42}/><span>Your café photo here</span></div>}
+          <button className="detail-close" onClick={onClose} aria-label="Close café details"><X size={20}/></button>
         </div>
         <div className="detail-body">
-          <div className="eyebrow">Café Club find</div>
+          <span className="eyebrow">Café club find</span>
           <div className="detail-title-row">
-            <div><h2>{cafe.name}</h2><div className="location"><MapPin size={14}/>{cafe.neighborhood}{cafe.address ? ` · ${cafe.address}` : ""}</div></div>
-            {cafe.rating && <span className="detail-rating"><Star size={15} fill="currentColor"/>{cafe.rating}</span>}
+            <div>
+              <h2>{cafe.name}</h2>
+              <div className="location"><MapPin size={14}/>{cafe.address || cafe.neighborhood}</div>
+            </div>
+            {cafe.rating != null && <div className="detail-rating"><Star size={16} fill="currentColor"/>{cafe.rating}</div>}
           </div>
-          {cafe.tags.length > 0 && <div className="tags detail-tags">{cafe.tags.map(t => <span key={t}>{t}</span>)}</div>}
-          {cafe.note && <p className="detail-note">{cafe.note}</p>}
+          {!!cafe.tags.length && <div className="tags detail-tags">{cafe.tags.map(t => <span key={t}>{t}</span>)}</div>}
           <div className="detail-meta">
-            <span>{cafe.reviews} {cafe.reviews === 1 ? "review" : "reviews"}</span>
-            {cafe.tried && <span>✓ Been here</span>}
+            {cafe.tried && <span>✓ Visited</span>}
             {cafe.favorite && <span>♡ Favorite</span>}
+            <span>{reviews.length} {reviews.length === 1 ? "review" : "reviews"}</span>
           </div>
-          <button type="button" className="submit-button" onClick={onClose}>Done <Heart size={17}/></button>
+          {cafe.note && <p className="detail-note">{cafe.note}</p>}
+          {(cafe.website || cafe.instagram) && (
+            <div className="detail-links">
+              {cafe.website && <a href={cafe.website} target="_blank" rel="noreferrer">Website <ChevronRight size={14}/></a>}
+              {cafe.instagram && <a href={cafe.instagram} target="_blank" rel="noreferrer">Instagram <ChevronRight size={14}/></a>}
+            </div>
+          )}
+          {photos.length > 0 && (
+            <div className="detail-section">
+              <div className="detail-section-heading"><h3>Café photos</h3><span>{photos.length}</span></div>
+              <div className="photo-strip">
+                {photos.map(photo => <figure key={photo.id}><img src={photo.photo_url} alt={photo.caption || `${cafe.name} café`} />{photo.caption && <figcaption>{photo.caption}</figcaption>}</figure>)}
+              </div>
+            </div>
+          )}
+          <div className="detail-section">
+            <div className="detail-section-heading"><h3>Community reviews</h3><span>{reviews.length}</span></div>
+            {reviews.length ? (
+              <div className="review-list">
+                {reviews.map(review => (
+                  <div className="review-item" key={review.id}>
+                    <div className="review-top"><strong>{review.contributor_name || "Café Club member"}</strong>{review.rating != null && <span><Star size={12} fill="currentColor"/>{review.rating}</span>}</div>
+                    {review.review_text && <p>{review.review_text}</p>}
+                    {review.visit_date && <small>Visited {new Date(`${review.visit_date}T00:00:00`).toLocaleDateString()}</small>}
+                  </div>
+                ))}
+              </div>
+            ) : <div className="detail-empty">No reviews yet — be the first to share a note. ♡</div>}
+          </div>
+          <button className="detail-close-button" onClick={onClose}>Back to cafés</button>
         </div>
       </div>
     </div>
