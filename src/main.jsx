@@ -15,18 +15,33 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+const SACRAMENTO_BOUNDS = {
+  south: 37.95,
+  north: 39.15,
+  west: -122.55,
+  east: -120.35
+};
+
+function isValidSacramentoCoordinate(latitude, longitude) {
+  const lat = Number(latitude);
+  const lon = Number(longitude);
+  return Number.isFinite(lat) && Number.isFinite(lon)
+    && lat >= SACRAMENTO_BOUNDS.south && lat <= SACRAMENTO_BOUNDS.north
+    && lon >= SACRAMENTO_BOUNDS.west && lon <= SACRAMENTO_BOUNDS.east;
+}
+
 async function geocodeCafeAddress(address, neighborhood = "Sacramento") {
   if (!address) return null;
-  const query = [address, neighborhood, "Sacramento, CA"].filter(Boolean).join(", ");
+  const query = [address, neighborhood, "Sacramento, CA, USA"].filter(Boolean).join(", ");
   try {
     const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`,
-      { headers: { Accept: "application/json" } }
+      `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&q=${encodeURIComponent(query)}`
     );
     if (!response.ok) return null;
     const results = await response.json();
     if (!results?.length) return null;
-    return { latitude: Number(results[0].lat), longitude: Number(results[0].lon) };
+    const coordinates = { latitude: Number(results[0].lat), longitude: Number(results[0].lon) };
+    return isValidSacramentoCoordinate(coordinates.latitude, coordinates.longitude) ? coordinates : null;
   } catch (error) {
     console.warn("Map location lookup failed:", error);
     return null;
@@ -465,7 +480,7 @@ function CafeMap({ cafes, onOpenCafe }) {
     let cancelled = false;
     async function prepareLocations() {
       setMapCafes(cafes);
-      const missing = cafes.filter(c => c.address && (!Number.isFinite(Number(c.latitude)) || !Number.isFinite(Number(c.longitude))));
+      const missing = cafes.filter(c => c.address && !isValidSacramentoCoordinate(c.latitude, c.longitude));
       if (!missing.length) return;
 
       setGeocoding(true);
@@ -476,8 +491,10 @@ function CafeMap({ cafes, onOpenCafe }) {
         if (coordinates) {
           resolved.set(cafe.id, coordinates);
           await supabase.from("cafes").update(coordinates).eq("id", cafe.id);
+        } else if (cafe.latitude != null || cafe.longitude != null) {
+          await supabase.from("cafes").update({ latitude: null, longitude: null }).eq("id", cafe.id);
         }
-        await new Promise(resolve => setTimeout(resolve, 1100));
+        await new Promise(resolve => setTimeout(resolve, 1200));
       }
       if (cancelled) return;
       setMapCafes(cafes.map(c => resolved.has(c.id) ? { ...c, ...resolved.get(c.id) } : c));
@@ -487,7 +504,7 @@ function CafeMap({ cafes, onOpenCafe }) {
     return () => { cancelled = true; };
   }, [cafes]);
 
-  const located = mapCafes.filter(c => Number.isFinite(Number(c.latitude)) && Number.isFinite(Number(c.longitude)));
+  const located = mapCafes.filter(c => isValidSacramentoCoordinate(c.latitude, c.longitude));
 
   return (
     <div className="map-shell">
