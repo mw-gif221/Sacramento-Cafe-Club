@@ -175,12 +175,51 @@ function App() {
     setLoading(false);
   }
 
+  function getNextEventOccurrence(event) {
+    if (!event?.event_date) return null;
+    const base = new Date(`${event.event_date}T00:00:00`);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const end = event.recurrence_end_date ? new Date(`${event.recurrence_end_date}T00:00:00`) : null;
+    const recurrence = event.recurrence || "none";
+
+    if (recurrence === "none") return event.event_date;
+    if (end && today > end) return event.event_date;
+
+    let candidate = new Date(base);
+    let occurrenceIndex = 0;
+    let guard = 0;
+    while (candidate < today && guard < 5000) {
+      occurrenceIndex += 1;
+      if (recurrence === "weekly") {
+        candidate = new Date(base);
+        candidate.setDate(base.getDate() + occurrenceIndex * 7);
+      } else if (recurrence === "biweekly") {
+        candidate = new Date(base);
+        candidate.setDate(base.getDate() + occurrenceIndex * 14);
+      } else if (recurrence === "monthly") {
+        const targetMonth = base.getMonth() + occurrenceIndex;
+        candidate = new Date(base.getFullYear(), targetMonth, 1);
+        const lastDay = new Date(candidate.getFullYear(), candidate.getMonth() + 1, 0).getDate();
+        candidate.setDate(Math.min(base.getDate(), lastDay));
+      } else if (recurrence === "yearly") {
+        candidate = new Date(base);
+        candidate.setFullYear(base.getFullYear() + occurrenceIndex);
+      } else {
+        return event.event_date;
+      }
+      guard += 1;
+    }
+    if (end && candidate > end) return null;
+    return `${candidate.getFullYear()}-${String(candidate.getMonth()+1).padStart(2,"0")}-${String(candidate.getDate()).padStart(2,"0")}`;
+  }
+
   async function loadEvents() {
     setEventsLoading(true);
     setEventError("");
     const { data, error: eventsQueryError } = await supabase
       .from("events")
-      .select("id, title, event_type, event_date, start_time, end_time, location, description, website, instagram, contributor_name, image_url, created_at")
+      .select("id, title, event_type, event_date, start_time, end_time, location, description, website, instagram, contributor_name, image_url, recurrence, recurrence_end_date, created_at")
       .order("event_date", { ascending: true })
       .order("start_time", { ascending: true });
 
@@ -192,13 +231,13 @@ function App() {
       return;
     }
 
-    const normalized = (data || []).sort((a, b) => {
-      const aTime = new Date(`${a.event_date}T${a.start_time || "23:59"}`).getTime();
-      const bTime = new Date(`${b.event_date}T${b.start_time || "23:59"}`).getTime();
-      const aPast = aTime < Date.now();
-      const bPast = bTime < Date.now();
-      if (aPast !== bPast) return aPast ? 1 : -1;
-      return aPast ? bTime - aTime : aTime - bTime;
+    const normalized = (data || []).map(event => ({
+      ...event,
+      next_occurrence: getNextEventOccurrence(event)
+    })).sort((a, b) => {
+      const aTime = new Date(`${a.next_occurrence || a.event_date}T${a.start_time || "23:59"}`).getTime();
+      const bTime = new Date(`${b.next_occurrence || b.event_date}T${b.start_time || "23:59"}`).getTime();
+      return aTime - bTime;
     });
     setEvents(normalized);
     setEventsLoading(false);
@@ -434,6 +473,8 @@ function App() {
       title: form.title.trim(),
       event_type: form.eventType,
       event_date: form.eventDate,
+      recurrence: form.recurrence || "none",
+      recurrence_end_date: form.recurrence !== "none" ? (form.recurrenceEndDate || null) : null,
       start_time: form.startTime || null,
       end_time: form.endTime || null,
       location: form.location.trim() || null,
@@ -630,7 +671,8 @@ function App() {
               {eventsLoading ? (
                 <div className="empty-state">Loading community events… ✨</div>
               ) : events.filter(e => {
-                const when = new Date(`${e.event_date}T${e.start_time || "23:59"}`);
+                const displayDate = e.next_occurrence || e.event_date;
+                const when = new Date(`${displayDate}T${e.start_time || "23:59"}`);
                 return when >= new Date();
               }).slice(0, 3).length ? (
                 <div className="event-grid home-event-grid">
@@ -940,8 +982,13 @@ function EditCafeModal({ cafe, onClose, onSave }) {
   );
 }
 
+function formatRecurrence(value) {
+  return ({ weekly: "Weekly", biweekly: "Every 2 weeks", monthly: "Monthly", yearly: "Yearly" }[value]) || "Repeats";
+}
+
 function EventCard({ event, onOpen }) {
-  const date = event.event_date ? new Date(`${event.event_date}T00:00:00`) : null;
+  const displayDate = event.next_occurrence || event.event_date;
+  const date = displayDate ? new Date(`${displayDate}T00:00:00`) : null;
   const isPast = date ? new Date(`${event.event_date}T${event.start_time || "23:59"}`) < new Date() : false;
   return (
     <article className={`event-card ${isPast ? "past" : ""}`} role="button" tabIndex={0} onClick={() => onOpen?.(event)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen?.(event); } }}>
@@ -955,6 +1002,7 @@ function EventCard({ event, onOpen }) {
       </div>
       <div className="event-info">
         <span className="event-type">{event.event_type || "Community event"}</span>
+        {event.recurrence && event.recurrence !== "none" && <span className="event-repeat-pill">↻ {formatRecurrence(event.recurrence)}</span>}
         <h3>{event.title}</h3>
         {event.location && <div className="location"><MapPin size={13}/>{event.location}</div>}
         {event.start_time && <div className="event-time"><Clock size={13}/>{formatEventTime(event.start_time)}{event.end_time ? `–${formatEventTime(event.end_time)}` : ""}</div>}
@@ -974,7 +1022,8 @@ function formatEventTime(value) {
 }
 
 function EventDetailModal({ event, onClose, onDelete }) {
-  const date = event.event_date ? new Date(`${event.event_date}T00:00:00`) : null;
+  const displayDate = event.next_occurrence || event.event_date;
+  const date = displayDate ? new Date(`${displayDate}T00:00:00`) : null;
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div className="modal event-detail-modal" onMouseDown={e => e.stopPropagation()}>
@@ -991,6 +1040,7 @@ function EventDetailModal({ event, onClose, onDelete }) {
             {event.location && <span><MapPin size={14}/>{event.location}</span>}
           </div>
           <div className="event-type-pill">{event.event_type || "Community event"}</div>
+          {event.recurrence && event.recurrence !== "none" && <div className="event-repeat-detail">↻ Repeats {formatRecurrence(event.recurrence).toLowerCase()}{event.recurrence_end_date ? ` through ${new Date(`${event.recurrence_end_date}T00:00:00`).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}` : ""}</div>}
           {event.description && <p className="detail-note">{event.description}</p>}
           {(event.website || event.instagram) && <div className="detail-links">
             {event.website && <a href={event.website} target="_blank" rel="noreferrer">Event website <ExternalLink size={13}/></a>}
@@ -1007,7 +1057,7 @@ function EventDetailModal({ event, onClose, onDelete }) {
 
 function AddEventModal({ onClose, onSubmit }) {
   const savedContributor = localStorage.getItem("cafeClubContributor") || "";
-  const [form, setForm] = useState({ title:"", eventType:"Pop-up café", eventDate:"", startTime:"", endTime:"", location:"", description:"", website:"", instagram:"", contributorName:savedContributor, image:null });
+  const [form, setForm] = useState({ title:"", eventType:"Pop-up café", eventDate:"", recurrence:"none", recurrenceEndDate:"", startTime:"", endTime:"", location:"", description:"", website:"", instagram:"", contributorName:savedContributor, image:null });
   const [preview, setPreview] = useState("");
   const [saving, setSaving] = useState(false);
   function update(key, value) { setForm(f => ({ ...f, [key]: value })); }
@@ -1027,6 +1077,19 @@ function AddEventModal({ onClose, onSubmit }) {
           <div className="two-column-fields">
             <label>Date <input required type="date" value={form.eventDate} onChange={e => update("eventDate", e.target.value)}/></label>
             <label>Location <input value={form.location} onChange={e => update("location", e.target.value)} placeholder="e.g. Midtown café"/></label>
+          </div>
+          <div className="recurrence-box">
+            <label>Does this event repeat?
+              <select value={form.recurrence} onChange={e => update("recurrence", e.target.value)}>
+                <option value="none">No — one-time event</option>
+                <option value="weekly">Yes — every week</option>
+                <option value="biweekly">Yes — every 2 weeks</option>
+                <option value="monthly">Yes — every month</option>
+                <option value="yearly">Yes — every year</option>
+              </select>
+            </label>
+            {form.recurrence !== "none" && <label>Repeat through (optional) <input type="date" min={form.eventDate || undefined} value={form.recurrenceEndDate} onChange={e => update("recurrenceEndDate", e.target.value)}/></label>}
+            {form.recurrence !== "none" && <p className="field-help">The event stays as one post, and the club will show its next upcoming date.</p>}
           </div>
           <div className="two-column-fields">
             <label>Start time <input type="time" value={form.startTime} onChange={e => update("startTime", e.target.value)}/></label>
