@@ -5,9 +5,9 @@ import L from "leaflet";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import {
-  Coffee, Heart, Map, Plus, Search, Bookmark, UserRound,
+  Coffee, Heart, Map, Plus, Search, Bookmark, CalendarDays,
   ChevronRight, MapPin, Star, X, Camera, Leaf, Croissant,
-  GlassWater, Utensils, BookOpen
+  GlassWater, Utensils, BookOpen, Trash2, Clock, ExternalLink
 } from "lucide-react";
 import "./styles.css";
 
@@ -110,8 +110,13 @@ function App() {
   const [showAdd, setShowAdd] = useState(false);
   const [selectedCafe, setSelectedCafe] = useState(null);
   const [cafes, setCafes] = useState([]);
+  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [eventsLoading, setEventsLoading] = useState(true);
+  const [showAddEvent, setShowAddEvent] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState(null);
   const [error, setError] = useState("");
+  const [eventError, setEventError] = useState("");
 
   async function loadCafes() {
     setLoading(true);
@@ -170,8 +175,38 @@ function App() {
     setLoading(false);
   }
 
+  async function loadEvents() {
+    setEventsLoading(true);
+    setEventError("");
+    const { data, error: eventsQueryError } = await supabase
+      .from("events")
+      .select("id, title, event_type, event_date, start_time, end_time, location, description, website, instagram, contributor_name, image_url, created_at")
+      .order("event_date", { ascending: true })
+      .order("start_time", { ascending: true });
+
+    if (eventsQueryError) {
+      console.error(eventsQueryError);
+      setEvents([]);
+      setEventError("The event board needs its Supabase table connected. Run the included EVENTS-POLICY.sql once, then refresh.");
+      setEventsLoading(false);
+      return;
+    }
+
+    const normalized = (data || []).sort((a, b) => {
+      const aTime = new Date(`${a.event_date}T${a.start_time || "23:59"}`).getTime();
+      const bTime = new Date(`${b.event_date}T${b.start_time || "23:59"}`).getTime();
+      const aPast = aTime < Date.now();
+      const bPast = bTime < Date.now();
+      if (aPast !== bPast) return aPast ? 1 : -1;
+      return aPast ? bTime - aTime : aTime - bTime;
+    });
+    setEvents(normalized);
+    setEventsLoading(false);
+  }
+
   useEffect(() => {
     loadCafes();
+    loadEvents();
   }, []);
 
   const filtered = useMemo(() => {
@@ -353,6 +388,109 @@ function App() {
     return true;
   }
 
+  async function deleteCafe(cafe) {
+    const confirmed = window.confirm(`Delete “${cafe.name}” from the café club? This will remove its reviews, photos, favorites, and map listing for everyone.`);
+    if (!confirmed) return false;
+    setError("");
+
+    // Remove stored photo files first so deleting the café does not leave orphaned images.
+    const photoPaths = (cafe.photos || []).map(photo => {
+      try {
+        const marker = "/Cafe%20Photos/";
+        const encodedPath = photo.photo_url?.split(marker)[1];
+        return encodedPath ? decodeURIComponent(encodedPath) : null;
+      } catch { return null; }
+    }).filter(Boolean);
+    if (photoPaths.length) {
+      const { error: storageError } = await supabase.storage.from("Cafe Photos").remove(photoPaths);
+      if (storageError) console.warn("Photo cleanup failed:", storageError);
+    }
+
+    for (const table of ["photos", "reviews", "favorites", "cafe_tags"]) {
+      const { error: childError } = await supabase.from(table).delete().eq("cafe_id", cafe.id);
+      if (childError) {
+        console.error(childError);
+        setError(`We couldn't delete ${cafe.name} because its ${table.replace("_", " ")} could not be removed.`);
+        return false;
+      }
+    }
+
+    const { error: cafeDeleteError } = await supabase.from("cafes").delete().eq("id", cafe.id);
+    if (cafeDeleteError) {
+      console.error(cafeDeleteError);
+      setError(cafeDeleteError.message || "We couldn't delete that café. Please try again.");
+      return false;
+    }
+
+    setSelectedCafe(null);
+    await loadCafes();
+    return true;
+  }
+
+  async function addEvent(form) {
+    setEventError("");
+    const contributorName = form.contributorName.trim() || "Café Club member";
+    const { data: event, error: eventInsertError } = await supabase.from("events").insert({
+      title: form.title.trim(),
+      event_type: form.eventType,
+      event_date: form.eventDate,
+      start_time: form.startTime || null,
+      end_time: form.endTime || null,
+      location: form.location.trim() || null,
+      description: form.description.trim() || null,
+      website: form.website.trim() || null,
+      instagram: form.instagram.trim() || null,
+      contributor_name: contributorName
+    }).select().single();
+
+    if (eventInsertError) {
+      console.error(eventInsertError);
+      setEventError(eventInsertError.message || "We couldn't post that event. Please try again.");
+      return;
+    }
+
+    if (form.image) {
+      const safeName = form.image.name.toLowerCase().replace(/[^a-z0-9.\-_]+/g, "-");
+      const filePath = `events/${event.id}/${Date.now()}-${safeName}`;
+      const { error: uploadError } = await supabase.storage.from("Cafe Photos").upload(filePath, form.image, {
+        cacheControl: "3600", upsert: false, contentType: form.image.type || "image/jpeg"
+      });
+      if (!uploadError) {
+        const { data: publicData } = supabase.storage.from("Cafe Photos").getPublicUrl(filePath);
+        await supabase.from("events").update({ image_url: publicData.publicUrl }).eq("id", event.id);
+      } else {
+        console.error(uploadError);
+        setEventError("The event was posted, but its photo could not be uploaded.");
+      }
+    }
+
+    localStorage.setItem("cafeClubContributor", contributorName);
+    setShowAddEvent(false);
+    await loadEvents();
+    setActiveTab("events");
+  }
+
+  async function deleteEvent(event) {
+    const confirmed = window.confirm(`Delete “${event.title}” from the community event board?`);
+    if (!confirmed) return;
+    setEventError("");
+    if (event.image_url) {
+      try {
+        const marker = "/Cafe%20Photos/";
+        const encodedPath = event.image_url.split(marker)[1];
+        if (encodedPath) await supabase.storage.from("Cafe Photos").remove([decodeURIComponent(encodedPath)]);
+      } catch (storageError) { console.warn("Event photo cleanup failed:", storageError); }
+    }
+    const { error: deleteError } = await supabase.from("events").delete().eq("id", event.id);
+    if (deleteError) {
+      console.error(deleteError);
+      setEventError(deleteError.message || "We couldn't delete that event. Please try again.");
+      return;
+    }
+    setSelectedEvent(null);
+    await loadEvents();
+  }
+
   function scrollToSection(id) {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -424,6 +562,32 @@ function App() {
             </div>
             <CafeMap cafes={filtered} onOpenCafe={setSelectedCafe} />
           </section>
+        ) : activeTab === "events" ? (
+          <section className="events-panel">
+            <div className="events-hero">
+              <div>
+                <span className="eyebrow">Café community</span>
+                <h2>What’s happening around town? <span>✦</span></h2>
+                <p>Share pop-up cafés, coffee tastings, markets, meetups, and other Sacramento community events.</p>
+              </div>
+              <button className="header-add event-add-button" onClick={() => setShowAddEvent(true)}><Plus size={17}/> Post an event</button>
+            </div>
+            {eventError && <div className="error-banner event-error">{eventError}</div>}
+            {eventsLoading ? (
+              <div className="empty-state">Loading the community calendar… ✨</div>
+            ) : events.length ? (
+              <div className="event-grid">
+                {events.map(event => <EventCard key={event.id} event={event} onOpen={setSelectedEvent}/>)}
+              </div>
+            ) : (
+              <div className="events-empty">
+                <div className="events-empty-icon">☕</div>
+                <h3>No events posted yet</h3>
+                <p>Know about a pop-up café or community event? Be the first to add it.</p>
+                <button className="submit-button inline-submit" onClick={() => setShowAddEvent(true)}>Post the first event <Plus size={17}/></button>
+              </div>
+            )}
+          </section>
         ) : (
           <>
             <section className="section" id="favorite-section">
@@ -492,11 +656,13 @@ function App() {
         <NavButton icon={Map} label="Map" active={activeTab === "map"} onClick={() => setActiveTab("map")} />
         <button className="floating-add" onClick={() => setShowAdd(true)} aria-label="Add café"><Plus size={26}/></button>
         <NavButton icon={Bookmark} label="Saved" active={false} onClick={() => {}} />
-        <NavButton icon={UserRound} label="Crew" active={false} onClick={() => {}} />
+        <NavButton icon={CalendarDays} label="Events" active={activeTab === "events"} onClick={() => setActiveTab("events")} />
       </nav>
 
       {showAdd && <AddCafeModal onClose={() => setShowAdd(false)} onSubmit={addCafe}/>}
-      {selectedCafe && <CafeDetailModal cafe={selectedCafe} onClose={() => setSelectedCafe(null)} onUpdate={updateCafe} />}
+      {showAddEvent && <AddEventModal onClose={() => setShowAddEvent(false)} onSubmit={addEvent}/>}
+      {selectedCafe && <CafeDetailModal cafe={selectedCafe} onClose={() => setSelectedCafe(null)} onUpdate={updateCafe} onDelete={deleteCafe} />}
+      {selectedEvent && <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} onDelete={deleteEvent} />}
 
     </div>
   );
@@ -602,7 +768,7 @@ function CafeCard({ cafe, onOpen }) {
   );
 }
 
-function CafeDetailModal({ cafe, onClose, onUpdate }) {
+function CafeDetailModal({ cafe, onClose, onUpdate, onDelete }) {
   const reviews = cafe.reviews || [];
   const photos = cafe.photos || [];
   const [selectedPhoto, setSelectedPhoto] = useState(null);
@@ -668,6 +834,7 @@ function CafeDetailModal({ cafe, onClose, onUpdate }) {
             ) : <div className="detail-empty">No reviews yet — be the first to share a note. ♡</div>}
           </div>
           <button className="detail-close-button" onClick={onClose}>Back to cafés</button>
+          <button className="delete-cafe-button" onClick={() => onDelete?.(cafe)}><Trash2 size={15}/> Delete café</button>
         </div>
         {selectedPhoto && (
           <div className="photo-lightbox" onMouseDown={() => setSelectedPhoto(null)}>
@@ -748,6 +915,112 @@ function EditCafeModal({ cafe, onClose, onSave }) {
   );
 }
 
+function EventCard({ event, onOpen }) {
+  const date = event.event_date ? new Date(`${event.event_date}T00:00:00`) : null;
+  const isPast = date ? new Date(`${event.event_date}T${event.start_time || "23:59"}`) < new Date() : false;
+  return (
+    <article className={`event-card ${isPast ? "past" : ""}`} role="button" tabIndex={0} onClick={() => onOpen?.(event)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen?.(event); } }}>
+      <div className="event-date-badge">
+        <span>{date?.toLocaleDateString(undefined, { month: "short" }).toUpperCase() || "EVENT"}</span>
+        <strong>{date?.toLocaleDateString(undefined, { day: "numeric" }) || "✦"}</strong>
+      </div>
+      <div className={`event-image ${event.image_url ? "has-image" : ""}`} style={event.image_url ? { backgroundImage: `url(${event.image_url})` } : {}}>
+        {!event.image_url && <div className="event-placeholder">☕</div>}
+        {isPast && <span className="past-badge">Past event</span>}
+      </div>
+      <div className="event-info">
+        <span className="event-type">{event.event_type || "Community event"}</span>
+        <h3>{event.title}</h3>
+        {event.location && <div className="location"><MapPin size={13}/>{event.location}</div>}
+        {event.start_time && <div className="event-time"><Clock size={13}/>{formatEventTime(event.start_time)}{event.end_time ? `–${formatEventTime(event.end_time)}` : ""}</div>}
+        {event.description && <p>{event.description}</p>}
+        <span className="card-link">View event <ChevronRight size={14}/></span>
+      </div>
+    </article>
+  );
+}
+
+function formatEventTime(value) {
+  if (!value) return "";
+  const [hours, minutes] = value.split(":").map(Number);
+  const date = new Date();
+  date.setHours(hours, minutes || 0, 0, 0);
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function EventDetailModal({ event, onClose, onDelete }) {
+  const date = event.event_date ? new Date(`${event.event_date}T00:00:00`) : null;
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <div className="modal event-detail-modal" onMouseDown={e => e.stopPropagation()}>
+        <div className={`event-detail-image ${event.image_url ? "has-image" : ""}`} style={event.image_url ? { backgroundImage: `url(${event.image_url})` } : {}}>
+          {!event.image_url && <div className="event-detail-placeholder">☕ ✦ ☕</div>}
+          <button className="detail-close" onClick={onClose} aria-label="Close event"><X size={20}/></button>
+        </div>
+        <div className="detail-body">
+          <span className="eyebrow">Café community</span>
+          <h2 className="event-detail-title">{event.title}</h2>
+          <div className="event-detail-meta">
+            {date && <span><CalendarDays size={14}/>{date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</span>}
+            {event.start_time && <span><Clock size={14}/>{formatEventTime(event.start_time)}{event.end_time ? `–${formatEventTime(event.end_time)}` : ""}</span>}
+            {event.location && <span><MapPin size={14}/>{event.location}</span>}
+          </div>
+          <div className="event-type-pill">{event.event_type || "Community event"}</div>
+          {event.description && <p className="detail-note">{event.description}</p>}
+          {(event.website || event.instagram) && <div className="detail-links">
+            {event.website && <a href={event.website} target="_blank" rel="noreferrer">Event website <ExternalLink size={13}/></a>}
+            {event.instagram && <a href={event.instagram} target="_blank" rel="noreferrer">Instagram <ExternalLink size={13}/></a>}
+          </div>}
+          <p className="event-posted-by">Posted by {event.contributor_name || "Café Club member"}</p>
+          <button className="detail-close-button" onClick={onClose}>Back to events</button>
+          <button className="delete-cafe-button" onClick={() => onDelete?.(event)}><Trash2 size={15}/> Delete event</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddEventModal({ onClose, onSubmit }) {
+  const savedContributor = localStorage.getItem("cafeClubContributor") || "";
+  const [form, setForm] = useState({ title:"", eventType:"Pop-up café", eventDate:"", startTime:"", endTime:"", location:"", description:"", website:"", instagram:"", contributorName:savedContributor, image:null });
+  const [preview, setPreview] = useState("");
+  const [saving, setSaving] = useState(false);
+  function update(key, value) { setForm(f => ({ ...f, [key]: value })); }
+  function handleImage(e) { const file = e.target.files?.[0]; if (!file) return; setPreview(URL.createObjectURL(file)); update("image", file); }
+  async function submit(e) { e.preventDefault(); if (!form.title.trim() || !form.eventDate) return; setSaving(true); await onSubmit(form); setSaving(false); }
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <div className="modal" onMouseDown={e => e.stopPropagation()}>
+        <div className="modal-head"><div><span className="eyebrow">Café community</span><h2>Post an event ✦</h2></div><button onClick={onClose} aria-label="Close event form"><X/></button></div>
+        <form onSubmit={submit}>
+          <label>Event title <input required value={form.title} onChange={e => update("title", e.target.value)} placeholder="e.g. Sunday Coffee Pop-Up"/></label>
+          <label>Event type
+            <select value={form.eventType} onChange={e => update("eventType", e.target.value)}>
+              <option>Pop-up café</option><option>Coffee / food event</option><option>Community event</option><option>Market / makers event</option><option>Other</option>
+            </select>
+          </label>
+          <div className="two-column-fields">
+            <label>Date <input required type="date" value={form.eventDate} onChange={e => update("eventDate", e.target.value)}/></label>
+            <label>Location <input value={form.location} onChange={e => update("location", e.target.value)} placeholder="e.g. Midtown café"/></label>
+          </div>
+          <div className="two-column-fields">
+            <label>Start time <input type="time" value={form.startTime} onChange={e => update("startTime", e.target.value)}/></label>
+            <label>End time <input type="time" value={form.endTime} onChange={e => update("endTime", e.target.value)}/></label>
+          </div>
+          <label>Your name <input value={form.contributorName} onChange={e => update("contributorName", e.target.value)} placeholder="e.g. Megan"/></label>
+          <label>Event details <textarea value={form.description} onChange={e => update("description", e.target.value)} placeholder="Tell the café club what is happening…"/></label>
+          <label>Event website <input type="url" value={form.website} onChange={e => update("website", e.target.value)} placeholder="https://…"/></label>
+          <label>Instagram <input type="url" value={form.instagram} onChange={e => update("instagram", e.target.value)} placeholder="https://instagram.com/…"/></label>
+          <label className="upload"><Camera size={19}/><span>{preview ? "Photo selected" : "Add an event photo (optional)"}</span><input type="file" accept="image/*" onChange={handleImage}/></label>
+          {preview && <img className="preview" src={preview} alt="Selected event preview"/>}
+          <button className="submit-button" type="submit" disabled={saving}>{saving ? "Posting…" : "Post event"} <CalendarDays size={17}/></button>
+        </form>
+        <p className="modal-footnote">Event posts are shared with everyone who has the link.</p>
+      </div>
+    </div>
+  );
+}
+
 function NavButton({icon: Icon, label, active, onClick}) {
   return <button className={`nav-button ${active ? "active" : ""}`} onClick={onClick}><Icon size={19}/><span>{label}</span></button>;
 }
@@ -803,7 +1076,7 @@ function AddCafeModal({onClose, onSubmit}) {
           </div>
           <button className="submit-button" type="submit" disabled={saving}>{saving ? "Adding…" : "Add café"} <Heart size={17}/></button>
         </form>
-        <p className="modal-footnote">Photos will be saved to the shared café album after Storage permissions are connected.</p>
+        <p className="modal-footnote">Photos are shared with everyone who has the link.</p>
       </div>
     </div>
   );
