@@ -622,6 +622,31 @@ function App() {
               )}
             </section>
 
+            <section className="section home-events-section" id="events-section">
+              <div className="section-heading">
+                <div><span className="eyebrow">Café community</span><h2>What’s happening <span>✦</span></h2></div>
+                <button className="text-button" onClick={() => setActiveTab("events")}>See all events <ChevronRight size={15}/></button>
+              </div>
+              {eventsLoading ? (
+                <div className="empty-state">Loading community events… ✨</div>
+              ) : events.filter(e => {
+                const when = new Date(`${e.event_date}T${e.start_time || "23:59"}`);
+                return when >= new Date();
+              }).slice(0, 3).length ? (
+                <div className="event-grid home-event-grid">
+                  {events.filter(e => {
+                    const when = new Date(`${e.event_date}T${e.start_time || "23:59"}`);
+                    return when >= new Date();
+                  }).slice(0, 3).map(event => <EventCard key={event.id} event={event} onOpen={setSelectedEvent}/>)}
+                </div>
+              ) : (
+                <div className="events-home-empty">
+                  <div><strong>No upcoming events yet ✦</strong><p>Know about a pop-up café, tasting, market, or community gathering? Share it with the club.</p></div>
+                  <button className="submit-button inline-submit" onClick={() => setShowAddEvent(true)}>Post an event <Plus size={16}/></button>
+                </div>
+              )}
+            </section>
+
             <section className="section" id="all-cafes-section">
               <div className="section-heading">
                 <div><span className="eyebrow">The café club</span><h2>All cafés ☕</h2></div>
