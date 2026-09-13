@@ -233,7 +233,7 @@ main{max-width:1180px;margin:auto;padding:0 20px}
 .event-date-badge strong{font-family:"Playfair Display",serif;font-size:24px;font-weight:500;line-height:1;color:var(--espresso)}
 .past-badge{position:absolute;right:11px;top:11px;background:rgba(74,48,45,.76);color:white;border-radius:999px;padding:6px 8px;font-size:9px;font-weight:700}
 .event-info{padding:15px}
-.event-type{font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--pink-dark);font-weight:800}
+.event-type{font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--pink-dark);font-weight:800}.event-repeat-pill{display:inline-flex;margin-left:6px;background:var(--sage-soft);color:var(--espresso);border-radius:999px;padding:4px 7px;font-size:9px;font-weight:700;vertical-align:middle}
 .event-info h3{font-family:"Playfair Display",serif;font-size:22px;font-weight:500;line-height:1.15;margin:5px 0 7px}
 .event-info .location{margin:5px 0 5px}
 .event-time{display:flex;align-items:center;gap:4px;color:var(--muted);font-size:11px;margin:3px 0 7px}
@@ -250,7 +250,7 @@ main{max-width:1180px;margin:auto;padding:0 20px}
 .event-detail-title{font-family:"Playfair Display",serif;font-size:34px;font-weight:500;line-height:1.08;margin:5px 0 14px}
 .event-detail-meta{display:grid;gap:8px;margin:8px 0 14px}
 .event-detail-meta span{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px}
-.event-type-pill{display:inline-flex;background:var(--pink-soft);color:var(--espresso);border-radius:999px;padding:7px 10px;font-size:10px;font-weight:700}
+.event-type-pill{display:inline-flex;background:var(--pink-soft);color:var(--espresso);border-radius:999px;padding:7px 10px;font-size:10px;font-weight:700}.event-repeat-detail{display:inline-flex;margin-top:9px;background:var(--sage-soft);color:var(--espresso);border-radius:999px;padding:7px 10px;font-size:10px;font-weight:700}.recurrence-box{background:linear-gradient(120deg,#fff8f5,#f5f8f1);border:1px solid var(--line);border-radius:15px;padding:12px;margin:2px 0 12px}.recurrence-box label{margin:0}.field-help{font-size:10px;color:var(--muted);line-height:1.4;margin:7px 2px 0}
 .event-posted-by{font-size:11px;color:var(--muted);margin-top:20px}
 .delete-cafe-button{width:100%;border:1px solid #e2c4bf;background:#fff7f5;color:#a95f62;border-radius:14px;padding:11px;margin-top:9px;font-size:12px;font-weight:700;display:flex;justify-content:center;align-items:center;gap:6px;cursor:pointer}
 .delete-cafe-button:hover{background:var(--pink-soft)}
