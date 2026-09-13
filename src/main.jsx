@@ -80,6 +80,20 @@ function MapAutoFit({ cafes }) {
   return null;
 }
 
+function MapCafePopup({ cafe, onOpenCafe }) {
+  const map = useMap();
+  return (
+    <div className="map-popup">
+      <div className="map-popup-kicker">Café Club find</div>
+      <strong>{cafe.name}</strong>
+      <span className="map-popup-location"><MapPin size={12}/>{cafe.neighborhood || "Sacramento"}</span>
+      {cafe.rating != null && <span className="map-popup-rating"><Star size={12} fill="currentColor"/>{cafe.rating}</span>}
+      {!!cafe.tags?.length && <div className="map-popup-tags">{cafe.tags.slice(0, 3).map(tag => <span key={tag}>{tag}</span>)}</div>}
+      <button onClick={() => { map.closePopup(); onOpenCafe(cafe); }}>View café <ChevronRight size={14}/></button>
+    </div>
+  );
+}
+
 const categories = [
   { label: "Coffee", icon: Coffee },
   { label: "Matcha", icon: Leaf },
@@ -537,14 +551,7 @@ function CafeMap({ cafes, onOpenCafe }) {
         {located.map(cafe => (
           <Marker key={cafe.id} position={[Number(cafe.latitude), Number(cafe.longitude)]} icon={getCafePin(cafe)}>
             <Popup className="cafe-map-popup">
-              <div className="map-popup">
-                <div className="map-popup-kicker">Café Club find</div>
-                <strong>{cafe.name}</strong>
-                <span className="map-popup-location"><MapPin size={12}/>{cafe.neighborhood || "Sacramento"}</span>
-                {cafe.rating != null && <span className="map-popup-rating"><Star size={12} fill="currentColor"/>{cafe.rating}</span>}
-                {!!cafe.tags?.length && <div className="map-popup-tags">{cafe.tags.slice(0, 3).map(tag => <span key={tag}>{tag}</span>)}</div>}
-                <button onClick={() => onOpenCafe(cafe)}>View café <ChevronRight size={14}/></button>
-              </div>
+              <MapCafePopup cafe={cafe} onOpenCafe={onOpenCafe} />
             </Popup>
           </Marker>
         ))}
