@@ -75,7 +75,7 @@ main{max-width:1180px;margin:auto;padding:0 20px}
 .map-popup{display:flex;flex-direction:column;gap:5px;min-width:150px;color:var(--espresso)}
 .map-popup strong{font-family:"Playfair Display",serif;font-size:16px}.map-popup span{font-size:12px;color:#75615d}.map-popup button{border:0;border-radius:10px;background:var(--espresso);color:white;padding:7px 9px;font:600 12px "DM Sans",sans-serif;cursor:pointer}
 .map-status{position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:1000;background:rgba(255,253,251,.94);padding:9px 14px;border-radius:999px;font-family:"Patrick Hand";font-size:15px;box-shadow:0 4px 14px rgba(74,48,45,.12);white-space:nowrap}.map-status-bottom{top:auto;bottom:16px;font-family:"DM Sans",sans-serif;font-size:12px}.leaflet-control-zoom a{color:var(--espresso)!important}.leaflet-control-attribution{font-size:10px!important}
-.modal-backdrop{position:fixed;inset:0;background:rgba(48,29,27,.35);z-index:50;display:grid;place-items:center;padding:16px}
+.modal-backdrop{position:fixed;inset:0;background:rgba(48,29,27,.35);z-index:2000;display:grid;place-items:center;padding:16px}
 .modal{background:var(--paper);width:min(560px,100%);max-height:92vh;overflow:auto;border-radius:25px;padding:22px;box-shadow:0 30px 70px rgba(48,29,27,.25)}
 .modal-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}
 .modal-head h2{font-family:"Playfair Display";font-size:30px;font-weight:500;margin:4px 0}
