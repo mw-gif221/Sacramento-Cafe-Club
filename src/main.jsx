@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createClient } from "@supabase/supabase-js";
+import L from "leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
 import {
   Coffee, Heart, Map, Plus, Search, Bookmark, UserRound,
   ChevronRight, MapPin, Star, X, Camera, Leaf, Croissant,
@@ -11,6 +14,44 @@ import "./styles.css";
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+async function geocodeCafeAddress(address, neighborhood = "Sacramento") {
+  if (!address) return null;
+  const query = [address, neighborhood, "Sacramento, CA"].filter(Boolean).join(", ");
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`,
+      { headers: { Accept: "application/json" } }
+    );
+    if (!response.ok) return null;
+    const results = await response.json();
+    if (!results?.length) return null;
+    return { latitude: Number(results[0].lat), longitude: Number(results[0].lon) };
+  } catch (error) {
+    console.warn("Map location lookup failed:", error);
+    return null;
+  }
+}
+
+const mapPinIcon = L.divIcon({
+  className: "cafe-map-marker",
+  html: '<div class="cafe-map-marker-inner">☕</div>',
+  iconSize: [42, 42],
+  iconAnchor: [21, 39],
+  popupAnchor: [0, -38]
+});
+
+function MapAutoFit({ cafes }) {
+  const map = useMap();
+  useEffect(() => {
+    const points = cafes
+      .filter(c => Number.isFinite(Number(c.latitude)) && Number.isFinite(Number(c.longitude)))
+      .map(c => [Number(c.latitude), Number(c.longitude)]);
+    if (points.length === 1) map.setView(points[0], 15);
+    if (points.length > 1) map.fitBounds(points, { padding: [35, 35], maxZoom: 14 });
+  }, [cafes, map]);
+  return null;
+}
 
 const categories = [
   { label: "Coffee", icon: Coffee },
@@ -38,7 +79,7 @@ function App() {
     const { data, error } = await supabase
       .from("cafes")
       .select(`
-        id, name, address, neighborhood, description, website, instagram,
+        id, name, address, neighborhood, latitude, longitude, description, website, instagram,
         price_level, created_at,
         reviews ( id, contributor_name, rating, review_text, visit_date ),
         cafe_tags ( tags ( name, emoji ) ),
@@ -110,13 +151,18 @@ function App() {
     setError("");
 
     const contributorName = form.contributorName.trim() || "Café Club member";
+    const address = form.address.trim() || null;
+    const neighborhood = form.neighborhood.trim() || "Sacramento";
+    const coordinates = await geocodeCafeAddress(address, neighborhood);
 
     const { data: cafe, error: cafeError } = await supabase
       .from("cafes")
       .insert({
         name: form.name.trim(),
-        address: form.address.trim() || null,
-        neighborhood: form.neighborhood.trim() || "Sacramento",
+        address,
+        neighborhood,
+        latitude: coordinates?.latitude ?? null,
+        longitude: coordinates?.longitude ?? null,
         description: form.review.trim() || null
       })
       .select()
@@ -203,12 +249,18 @@ function App() {
   async function updateCafe(cafeId, form) {
     setError("");
 
+    const address = form.address.trim() || null;
+    const neighborhood = form.neighborhood.trim() || "Sacramento";
+    const coordinates = await geocodeCafeAddress(address, neighborhood);
+
     const { error: cafeError } = await supabase
       .from("cafes")
       .update({
         name: form.name.trim(),
-        address: form.address.trim() || null,
-        neighborhood: form.neighborhood.trim() || "Sacramento",
+        address,
+        neighborhood,
+        latitude: coordinates?.latitude ?? null,
+        longitude: coordinates?.longitude ?? null,
         description: form.description.trim() || null
       })
       .eq("id", cafeId);
@@ -325,18 +377,7 @@ function App() {
               <div><span className="eyebrow">Explore</span><h2>Sacramento cafés</h2></div>
               <button className="text-button" onClick={() => setActiveTab("home")}>Back to list</button>
             </div>
-            <div className="map-placeholder">
-              <div className="map-grid"></div>
-              <div className="map-label midtown">MIDTOWN</div>
-              <div className="map-label downtown">DOWNTOWN</div>
-              <div className="map-label landpark">LAND PARK</div>
-              {filtered.map((cafe, i) => (
-                <button key={cafe.id} className="map-pin" style={{left: `${20 + ((i * 17) % 62)}%`, top: `${25 + ((i * 23) % 52)}%`}} title={cafe.name}>
-                  <Coffee size={16}/>
-                </button>
-              ))}
-              <div className="map-note">Interactive map coming next ✦</div>
-            </div>
+            <CafeMap cafes={filtered} onOpenCafe={setSelectedCafe} />
           </section>
         ) : (
           <>
@@ -412,6 +453,67 @@ function App() {
       {showAdd && <AddCafeModal onClose={() => setShowAdd(false)} onSubmit={addCafe}/>}
       {selectedCafe && <CafeDetailModal cafe={selectedCafe} onClose={() => setSelectedCafe(null)} onUpdate={updateCafe} />}
 
+    </div>
+  );
+}
+
+function CafeMap({ cafes, onOpenCafe }) {
+  const [mapCafes, setMapCafes] = useState(cafes);
+  const [geocoding, setGeocoding] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function prepareLocations() {
+      setMapCafes(cafes);
+      const missing = cafes.filter(c => c.address && (!Number.isFinite(Number(c.latitude)) || !Number.isFinite(Number(c.longitude))));
+      if (!missing.length) return;
+
+      setGeocoding(true);
+      const resolved = new Map();
+      for (const cafe of missing) {
+        if (cancelled) return;
+        const coordinates = await geocodeCafeAddress(cafe.address, cafe.neighborhood);
+        if (coordinates) {
+          resolved.set(cafe.id, coordinates);
+          await supabase.from("cafes").update(coordinates).eq("id", cafe.id);
+        }
+        await new Promise(resolve => setTimeout(resolve, 1100));
+      }
+      if (cancelled) return;
+      setMapCafes(cafes.map(c => resolved.has(c.id) ? { ...c, ...resolved.get(c.id) } : c));
+      setGeocoding(false);
+    }
+    prepareLocations();
+    return () => { cancelled = true; };
+  }, [cafes]);
+
+  const located = mapCafes.filter(c => Number.isFinite(Number(c.latitude)) && Number.isFinite(Number(c.longitude)));
+
+  return (
+    <div className="map-shell">
+      <MapContainer center={[38.5816, -121.4944]} zoom={12} scrollWheelZoom={true} className="leaflet-map">
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <MapAutoFit cafes={located} />
+        {located.map(cafe => (
+          <Marker key={cafe.id} position={[Number(cafe.latitude), Number(cafe.longitude)]} icon={mapPinIcon}>
+            <Popup>
+              <div className="map-popup">
+                <strong>{cafe.name}</strong>
+                <span>{cafe.address || cafe.neighborhood}</span>
+                <button onClick={() => onOpenCafe(cafe)}>View café ✦</button>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
+      </MapContainer>
+      {geocoding && <div className="map-status">Finding café locations… ✦</div>}
+      {!geocoding && !located.length && <div className="map-status">Add an address to a café to place it on the map ♡</div>}
+      {!geocoding && located.length < mapCafes.length && located.length > 0 && (
+        <div className="map-status map-status-bottom">{located.length} of {mapCafes.length} cafés mapped</div>
+      )}
     </div>
   );
 }
