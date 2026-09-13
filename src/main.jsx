@@ -48,13 +48,24 @@ async function geocodeCafeAddress(address, neighborhood = "Sacramento") {
   }
 }
 
-const mapPinIcon = L.divIcon({
-  className: "cafe-map-marker",
-  html: '<div class="cafe-map-marker-inner">☕</div>',
-  iconSize: [42, 42],
-  iconAnchor: [21, 39],
-  popupAnchor: [0, -38]
-});
+const MAP_CENTER = [38.5816, -121.4944];
+
+function getCafePin(cafe) {
+  const tags = cafe.tags || [];
+  const pin = tags.includes("Matcha") ? "🍵"
+    : tags.includes("Boba") ? "🧋"
+    : tags.includes("Pastries") ? "🥐"
+    : tags.includes("Brunch") ? "🍳"
+    : "☕";
+
+  return L.divIcon({
+    className: "cafe-map-marker",
+    html: `<div class="cafe-map-marker-inner"><span>${pin}</span></div>`,
+    iconSize: [48, 48],
+    iconAnchor: [24, 44],
+    popupAnchor: [0, -43]
+  });
+}
 
 function MapAutoFit({ cafes }) {
   const map = useMap();
@@ -62,8 +73,9 @@ function MapAutoFit({ cafes }) {
     const points = cafes
       .filter(c => Number.isFinite(Number(c.latitude)) && Number.isFinite(Number(c.longitude)))
       .map(c => [Number(c.latitude), Number(c.longitude)]);
-    if (points.length === 1) map.setView(points[0], 15);
-    if (points.length > 1) map.fitBounds(points, { padding: [35, 35], maxZoom: 14 });
+    if (points.length === 1) map.setView(points[0], 14);
+    if (points.length > 1) map.fitBounds(points, { padding: [70, 70], maxZoom: 14 });
+    if (!points.length) map.setView(MAP_CENTER, 12.5);
   }, [cafes, map]);
   return null;
 }
@@ -388,8 +400,12 @@ function App() {
 
         {activeTab === "map" ? (
           <section className="map-panel">
-            <div className="section-heading">
-              <div><span className="eyebrow">Explore</span><h2>Sacramento cafés</h2></div>
+            <div className="map-heading">
+              <div>
+                <span className="eyebrow">Explore Sacramento</span>
+                <h2>Find your next café <span>☕</span></h2>
+                <p>Tap a pin to peek at a café, then open its full club page.</p>
+              </div>
               <button className="text-button" onClick={() => setActiveTab("home")}>Back to list</button>
             </div>
             <CafeMap cafes={filtered} onOpenCafe={setSelectedCafe} />
@@ -505,27 +521,43 @@ function CafeMap({ cafes, onOpenCafe }) {
   }, [cafes]);
 
   const located = mapCafes.filter(c => isValidSacramentoCoordinate(c.latitude, c.longitude));
+  const mappedTags = [...new Set(located.flatMap(c => c.tags || []))];
+  const hasMatcha = mappedTags.includes("Matcha");
+  const hasBoba = mappedTags.includes("Boba");
+  const hasPastries = mappedTags.includes("Pastries");
 
   return (
     <div className="map-shell">
-      <MapContainer center={[38.5816, -121.4944]} zoom={12} scrollWheelZoom={true} className="leaflet-map">
+      <MapContainer center={MAP_CENTER} zoom={12} scrollWheelZoom={true} className="leaflet-map">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         <MapAutoFit cafes={located} />
         {located.map(cafe => (
-          <Marker key={cafe.id} position={[Number(cafe.latitude), Number(cafe.longitude)]} icon={mapPinIcon}>
-            <Popup>
+          <Marker key={cafe.id} position={[Number(cafe.latitude), Number(cafe.longitude)]} icon={getCafePin(cafe)}>
+            <Popup className="cafe-map-popup">
               <div className="map-popup">
+                <div className="map-popup-kicker">Café Club find</div>
                 <strong>{cafe.name}</strong>
-                <span>{cafe.address || cafe.neighborhood}</span>
-                <button onClick={() => onOpenCafe(cafe)}>View café ✦</button>
+                <span className="map-popup-location"><MapPin size={12}/>{cafe.neighborhood || "Sacramento"}</span>
+                {cafe.rating != null && <span className="map-popup-rating"><Star size={12} fill="currentColor"/>{cafe.rating}</span>}
+                {!!cafe.tags?.length && <div className="map-popup-tags">{cafe.tags.slice(0, 3).map(tag => <span key={tag}>{tag}</span>)}</div>}
+                <button onClick={() => onOpenCafe(cafe)}>View café <ChevronRight size={14}/></button>
               </div>
             </Popup>
           </Marker>
         ))}
       </MapContainer>
+      <div className="map-floating-label">
+        <span>☕</span> Sacramento Café Club
+      </div>
+      <div className="map-legend">
+        <span><b>☕</b> Coffee</span>
+        {hasMatcha && <span><b>🍵</b> Matcha</span>}
+        {hasBoba && <span><b>🧋</b> Boba</span>}
+        {hasPastries && <span><b>🥐</b> Pastries</span>}
+      </div>
       {geocoding && <div className="map-status">Finding café locations… ✦</div>}
       {!geocoding && !located.length && <div className="map-status">Add an address to a café to place it on the map ♡</div>}
       {!geocoding && located.length < mapCafes.length && located.length > 0 && (
